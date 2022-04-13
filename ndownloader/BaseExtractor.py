@@ -1,4 +1,5 @@
 ﻿from bs4 import BeautifulSoup
+from utils import Helpers
 import requests
 import urllib3
 import http
@@ -14,7 +15,7 @@ class BaseExtractor(object):
             "User-Agent" : UserAgent().random
         }
         self.links = {
-            "base" : "https://nhentai.to/",
+            "base" : "https://nhentai.to",
             "artist" : "https://nhentai.to/artist/",
             "tag": "https://nhentai.to/tag/",
             "character" : "https://nhentai.to/character/",
@@ -23,9 +24,49 @@ class BaseExtractor(object):
             "random" : "https://nhentai.to/random/",
             "gallery": "https://nhentai.to/g/",
             "search" : "https://nhentai.to/search?", 
+            "direct_link" : "https://t.dogehls.xyz/galleries/",
         }
-
+        
+        
+    ######################################################################################
+    ## This is experimental and it didn't work the way it was intended.
+    ## It's supposed to get the id of the direct link of the gallery and iterate(link_id)
+    ## through it using how many items in the gallery (num_images)   
+    ## Unfortunately, in some cases, images can be of different format .jpg, .png ...
+    ## This will significantly reduce the number of requests sent to the website.
+    #######################################################################################
     
+    
+    # def exp_scrape_galleries(self, q="Mythra"):
+    #     search_url = Helpers().create_search_query(base_url=self.links["search"], q=q)
+    #     links = self.scrape_galleries_from_page(url=search_url, pages=1)
+    #     link_id = ""
+    #     num_images = ""
+    #     for l in links[:1]:
+    #         html = requests.get(l, headers=self.headers).content
+    #         soup = BeautifulSoup(html, "lxml")
+    #         num_images = len(soup.find_all("div", "thumb-container"))
+    #         print(f"Length: {num_images}")
+    #         time.sleep(2)
+            
+    #         #get gallery id from direct link
+    #         html = requests.get((l + '1')).content
+    #         soup = BeautifulSoup(html, "lxml")
+    #         x = soup.find("img", "fit-horizontal").get("src")
+    #         link_id = x = re.findall(r"([0-9].+)/", x)[0]
+            
+            
+    #     _mdir = self._create_gallery_directory(dirname="test")
+    #     for i in range(1, (int(num_images))):
+    #         print("downloading...")
+    #         with requests.get(f"{self.links['direct_link']}/{link_id}/{i}.jpg", headers=self.headers) as r:
+    #             e = r.headers['Content-Type'].split(r"/")[1]
+    #             _name = f"{i}.{e}"
+    #             with open(os.path.join(_mdir, _name), "wb") as f:
+    #                 for chunk in r.iter_content():
+    #                     if chunk:
+    #                         f.write(chunk)  
+
     def _create_init_directory(self):
         default_dir = os.path.join(os.path.dirname(__file__), 'automated')
         if os.path.exists(default_dir) == False:
@@ -115,6 +156,7 @@ class BaseExtractor(object):
             for g in gallery__links:
                 self._scrape_images_from_page(url=g)
                 
+            return gallery__links
         
     def _get_gallery(self, gallery_list=None, _title=None):
         _mdir = self._create_gallery_directory(dirname=_title)
@@ -140,7 +182,7 @@ class BaseExtractor(object):
                         
                         if soup.find("img", "fit-horizontal").get('src') != None:
                             _direct_link = soup.find("img", "fit-horizontal").get('src')
-                            with requests.get(_direct_link, stream=True, timeout=5) as r:
+                            with requests.get(_direct_link, stream=True, timeout=5, headers=self.headers) as r:
                                 r.raise_for_status()
                                 _name = re.findall(r".+/([0-9].+.[a-z].+)", _direct_link)[0]
                                 with open(os.path.join(_mdir, _name), "wb") as f:
@@ -164,9 +206,13 @@ class BaseExtractor(object):
                         time.sleep(2)
                         continue
                 _count += 1
-                print("Downloading {0} out of {1}".format((idx + 1), len(gallery_list)))
+                print("Downloaded {0} out of {1}".format((idx + 1), len(gallery_list)))
+                time.sleep(2)
                 
         finally:
             print("Gallery downloaded. {0} out of {1} image(s) were saved.".format(_count, len(gallery_list)))
             print("==========================================================\n")
             time.sleep(2)
+            
+debug = BaseExtractor()
+debug.exp_scrape_galleries()
