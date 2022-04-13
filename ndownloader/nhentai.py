@@ -21,12 +21,25 @@ class Nhentai(BaseExtractor):
         
         search_url = Helpers().create_search_query(base_url=self.SEARCH_URL, q=search_query)
         self.scrape_galleries_from_page(url=search_url, pages=pages, per_page=per_page)
+
         
+    def get_doujins_by_category(self, pages=None, per_page=None, **kwargs):
+        available = ["tag", "artist", "character", "parody", "group"]
+        if len(kwargs) > 1:
+            raise ValueError("too many arguments were passed.")
         
+        link = str()
         
-        
-        
-        
+        for value, key in kwargs.items():
+            print(f"value: {value} / key : {key}")
+            if value not in available:
+                raise ValueError(f"the parameter '{value}' is not a category.")
+
+            print(f"Category: {value}")    
+            query = key.replace(" ", "-")
+            link = self.categories[value] + query
+            
+        self.scrape_galleries_from_page(url=link, pages=pages, per_page=per_page)
+
 debug = Nhentai()
-# debug.get_doujin_by_id(id_=386602)
-debug.get_doujin_by_query(search_query="Jeanne D'Arc", pages=2, per_page=10)
+debug.get_doujins_by_category(pages=1, character="mythra")
