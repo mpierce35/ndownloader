@@ -8,6 +8,7 @@ import re
 import os
 import time
 from fake_useragent import UserAgent
+import shutil
 
 class BaseExtractor(object):
     def __init__(self, dirname=None):
@@ -44,6 +45,10 @@ class BaseExtractor(object):
         if os.path.exists(newdir) == False:
             os.mkdir(newdir)
         return newdir 
+    
+    def _convert_directory_to_zip(self, path):
+        dirname = os.path.basename(path)
+        print(shutil.make_archive(os.path.join(self.BASE_DIR, dirname), "zip", path))
 
     ###########################################
     # Scrape images from one gallery

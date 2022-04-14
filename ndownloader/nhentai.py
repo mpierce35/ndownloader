@@ -9,7 +9,10 @@ class Nhentai(BaseExtractor):
     
     def get_random_doujin(self):
         self._scrape_images_from_page(url=self.links['random'])
-        
+    
+    def get_multiple_random_gallery(self, galleries=None):
+        for _ in range(galleries):
+            self._scrape_images_from_page(url=self.links['random'])
     
     def get_doujin_by_id(self, id_):
         search_url = self.links['gallery'] + str(id_)
@@ -45,6 +48,3 @@ class Nhentai(BaseExtractor):
         for l in links:
             self._scrape_images_from_page(url=l)
 
-
-        
-    
