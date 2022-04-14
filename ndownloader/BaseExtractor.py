@@ -1,5 +1,5 @@
 ﻿from bs4 import BeautifulSoup
-from utils import Helpers
+import utils
 import concurrent.futures
 import requests
 import urllib3
@@ -53,7 +53,7 @@ class BaseExtractor(object):
             raise ValueError("'url' parameter is required.")
         
         _image_links = list()
-        invalid_chars = f'<>:"\/|?*.'
+        invalid_chars = f'<>:"\/|?*.@'
         pattern = r'[' + invalid_chars + ']'
         html = requests.get(url)
         soup = BeautifulSoup(html.content, 'lxml')        
@@ -64,32 +64,32 @@ class BaseExtractor(object):
         print("ID: {0}".format(_id))
         print("Number of images: {0}".format(len(containers)))
         x = re.sub(pattern, '', title)
-        self.gallery_dir_name = f"{_id}-{x}"[:155]                           # As Windows maximum character in a folder is 155
+        self.gallery_dir_name = f"{_id}-{x}"[:155]                     # As Windows maximum character in a folder is 155
         
         for image in containers:
             _image_link = image.find("a", "gallerythumb").get('href')
             _full_link = self.links['base'] + _image_link
             _image_links.append(_full_link)
         
-        return _image_links
+        
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            executor.map(self.get_file, _image_links)
         
     
     # Scrape galleries from page
     ####################################
     def scrape_galleries_from_page(self, url=None, pages=None, per_page=None):
         if pages is not None and int(pages) > 100:
-            raise ValueError("'pages' parameter must not exceed 100.")                  # 100 just not to be a total dick to the site owner.
+            raise ValueError("'pages' parameter must not exceed 100.")    # 100 just not to be a total dick to the site owner.
         
         while True:
             try:
-                
                 try:
                     html = requests.get(url).content
                     soup = BeautifulSoup(html, 'lxml')
                     max_pages = soup.find("a", "next").find_previous_sibling("a").text
                 except AttributeError:
                     max_pages = 1
-
                 gallery__links = list()
                 for page in range(1, (pages + 1)) if pages is not None else (range(1, 2)):
                     if page > int(max_pages):
@@ -106,13 +106,11 @@ class BaseExtractor(object):
                             gallery_link = gallery.find("a", "cover").get("href")
                             link = self.links['base'] + gallery_link
                             gallery__links.append(link)
-                        break
-                      
+                        break       
             except (requests.exceptions.ConnectionError, urllib3.exceptions.ConnectionError) as e:
                 print("connection aborted. waiting for {0} second(s) and trying again.".format(3))
                 time.sleep(3)
                 continue
-                
             return gallery__links
         
     def _get_gallery(self, gallery_list=None, _title=None):
@@ -196,8 +194,8 @@ class BaseExtractor(object):
                     with requests.get(_direct_link, stream=True, timeout=5, headers=self.headers) as r:
                         r.raise_for_status()
                         _name = re.findall(r".+/([0-9].+.[a-z].+)", _direct_link)[0]
-                        _mdir = self._create_gallery_directory(dirname=self.gallery_dir_name)
-                        with open(os.path.join(_mdir, _name), "wb") as f:
+                        _mdir = self._create_gallery_directory(dirname=(self.gallery_dir_name)).strip()
+                        with open((os.path.join(_mdir,_name)), "wb") as f:
                             for chunk in r.iter_content():
                                 if chunk:
                                     f.write(chunk)  
