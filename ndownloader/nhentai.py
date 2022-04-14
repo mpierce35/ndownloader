@@ -1,5 +1,6 @@
 ﻿from BaseExtractor import BaseExtractor
 from utils import Helpers
+import concurrent.futures
 
 class Nhentai(BaseExtractor):
     def __init__(self):
@@ -33,8 +34,18 @@ class Nhentai(BaseExtractor):
                 raise ValueError(f"the parameter '{value}' is not a category.")
             print(f"Category: {value}")    
             query = key.replace(" ", "-")
-            link = self.categories[value] + query
+            link = self.links[value] + query
         self.scrape_galleries_from_page(url=link, pages=pages, per_page=per_page)
 
+    
+    def get_gallery_by_url(self, url=None):
+        if url is None:
+            raise ValueError("url parameter is required.")
+            
+        links = self._scrape_images_from_page(url=url)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            executor.map(self.get_file, links)
+        
+        
 debug = Nhentai()
-debug.get_doujin_by_query(search_query="mythra", pages=1)
+debug.get_doujin_by_link(url="https://nhentai.to/g/275844")
