@@ -1,6 +1,6 @@
 ﻿from BaseExtractor import BaseExtractor
 import utils
-import concurrent.futures
+
 
 class Nhentai(BaseExtractor):
     def __init__(self):
@@ -10,13 +10,15 @@ class Nhentai(BaseExtractor):
     def get_random_doujin(self):
         self._scrape_images_from_page(url=self.links['random'])
     
+    
     def get_multiple_random_gallery(self, galleries=None):
         for _ in range(galleries):
             self._scrape_images_from_page(url=self.links['random'])
     
-    def get_doujin_by_id(self, id_):
+    
+    def get_doujin_by_id(self, id_, zip_=False):
         search_url = self.links['gallery'] + str(id_)
-        self._scrape_images_from_page(url=search_url)
+        self._scrape_images_from_page(url=search_url, zip_=zip_)
 
 
     def get_gallery_by_url(self, url):
@@ -34,7 +36,6 @@ class Nhentai(BaseExtractor):
     def get_doujins_by_category(self, pages=None, per_page=None, **kwargs):
         if len(kwargs) > 1:
             raise ValueError("too many arguments were passed.")
-        
         link = ""
         for value, key in kwargs.items():
             print(f"value: {value} / key : {key}")
@@ -48,3 +49,9 @@ class Nhentai(BaseExtractor):
         for l in links:
             self._scrape_images_from_page(url=l)
 
+
+#test
+# x = Nhentai()
+# t = "383911"
+# x.get_doujin_by_id(id_=t, zip_=False)
+# x.get_doujins_by_category(character="meguru-hachimiya", pages=1)

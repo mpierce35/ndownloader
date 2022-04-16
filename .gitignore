@@ -1,2 +1,5 @@
-﻿./ndownloader/automated/
-./ndownloader/automated/*
+﻿/ndownloader/automated/
+/ndownloader/automated/*
+/ndownloader/__pycache/
+/ndownloader/__pycache/*
+
