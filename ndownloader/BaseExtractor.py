@@ -11,15 +11,17 @@ import shutil
 import logging
 
 from decorators import check_valid_url
+from utils import decode_title
 
 class BaseExtractor(object):
     def __init__(self, dirname=None):
-        self.loggerConfig = logging.basicConfig(level=logging.DEBUG, format="%(levelname)s:%(asctime)s - %(filename)s/%(funcName)s --> %(message)s")
+        self.loggerConfig = logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(asctime)s - %(filename)s/%(funcName)s --> %(message)s")
         self.logger = logging.getLogger(__name__)
         self.BASE_DIR = dirname if dirname is not None else self._create_init_directory()
         self.GALLERY_DIR_NAME = ""
         self.headers = {
-            "User-Agent" : UserAgent().random,
+            "User-Agent" : "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/110.0",
+            "Connection" : "Keep-Alive"
         }
         self.links = {
             "base" : "https://nhentai.to",
@@ -54,10 +56,10 @@ class BaseExtractor(object):
         return default_dir
         
     
-    #create directory for the specied gallery    
+    #create directory for the specified gallery    
     def _create_gallery_directory(self, dirname=None) -> str:
         # to avoid moving/copying directories by user, I'm limiting folder's name to 255 characters
-        newdir = os.path.join(self.BASE_DIR, dirname[:255])
+        newdir = os.path.join(self.BASE_DIR, dirname)
         if os.path.exists(newdir) == False:
             os.mkdir(newdir)
             self.logger.info("Gallery directory was created.")
@@ -91,7 +93,6 @@ class BaseExtractor(object):
     ###########################################
     # Scrape images from one gallery
     ###########################################   
-    @check_valid_url
     def _scrape_images_from_page(self, url:str, zip_dir:bool=False) -> None:
         _image_links = list()
         invalid_chars = f'<>:"\/|?*.@'
@@ -99,21 +100,29 @@ class BaseExtractor(object):
         html = requests.get(url, headers=self.headers)
         soup = BeautifulSoup(html.content, 'lxml')        
         _id = re.findall(r"/([0-9].+)", html.url)[0]            
-        title = soup.find("h1").text
+        title = soup.find("h1")
         containers = soup.find_all("div", "thumb-container")
+        
+        if(title.find("a") and title.find("a").has_attr("data-cfemail")):
+            # somewhere in the title, a special character resides. titles like ID@LMASTER usually makes an error while creating a directory.
+            self.logger.info("Email tag protected by CloudFlare detected.")
+            decode_title(self, tag_name=title)
+        else:
+            self.logger.info("No email protected tags were found")
 
-        self.logger.info("Title: {0}".format(title))
+        x = re.sub(pattern, ' ', title.text)
+        
+        self.logger.info("Title: {0}".format(title.text))
         self.logger.info("ID: {0}".format(_id))
         self.logger.info("Number of images: {0}".format(len(containers)))
-
-        x = re.sub(pattern, ' ', title)
-        self.GALLERY_DIR_NAME = f"{_id}-{x}"[:260]
+        self.GALLERY_DIR_NAME = f"{_id}-{x}"[:200]
         self._create_gallery_directory(dirname=self.GALLERY_DIR_NAME)
             
         for image in containers:
             _image_link = image.find("a", "gallerythumb").get('href')
             _full_link = self.links['base'] + _image_link
             _image_links.append(_full_link)
+            
         
         with concurrent.futures.ThreadPoolExecutor() as executor:
             executor.map(self.get_file, _image_links)
@@ -125,18 +134,17 @@ class BaseExtractor(object):
     ####################################
     # Scrape galleries from page
     ####################################
-    @check_valid_url
     def scrape_galleries_from_page(self, url:str=None, pages:int=None, per_page:int=None) -> list:
         
-        if pages is not None and int(pages) > 100:
-            raise ValueError("'pages' parameter must not exceed 100.") 
-        
+        # if pages is not None and int(pages) > 100:
+        #     raise ValueError("'pages' parameter must not exceed 100.") 
         while True:
             try:
                 try:
                     html = requests.get(url).content
                     soup = BeautifulSoup(html, 'lxml')
                     max_pages = soup.find("a", "next").find_previous_sibling("a").text
+                    self.logger.debug("Number of pages: %i" % int(max_pages))
                 except AttributeError:
                     max_pages = 1
                     
@@ -170,7 +178,7 @@ class BaseExtractor(object):
 
     #downloads a single link and save file
     # change it to show donwload progress
-    def get_file(self, link, num_retries:int=20):
+    def get_file(self, link, num_retries:int=20, gallery_path:str=None):
         i = 0
         while True:
             self.logger.info("Downloading file...\n")
@@ -194,7 +202,7 @@ class BaseExtractor(object):
                         r.raise_for_status()
                         _name = re.findall(r".+/([0-9].+.[a-z].+)", _direct_link)[0]
                         x = os.path.join(self.BASE_DIR, self.GALLERY_DIR_NAME)
-                        with open(os.path.join(x, _name), "wb") as f:
+                        with open(gallery_path if gallery_path is not None else os.path.join(x, _name), "wb") as f:
                             for chunk in r.iter_content():
                                 if chunk:
                                     f.write(chunk)                 
@@ -209,58 +217,3 @@ class BaseExtractor(object):
                 time.sleep(2)
                 continue
         
-    
-    
-    def _get_gallery(self,gallery_list=None, _title=None):
-        _mdir = self._create_gallery_directory(dirname=_title)
-        _direct_link = ""
-        _count = 0
-        try:
-            for idx, link in enumerate(gallery_list):
-                while True:
-                    print("Downloading...")
-                    try:   
-                        html = requests.get(link).content
-                        soup = BeautifulSoup(html, "lxml")
-                        if soup.find('title').text == "nhentai.to | 504: Gateway time-out":
-                            print("Gateway Timeout Error...Retrying.")
-                            time.sleep(2)
-                            continue
-                        if soup.find('title').text == "nhentai.to | 520: Web server is returning an unknown error":
-                            print("520: Server just hit a wall...Retrying in 2 second(s)")
-                            time.sleep(2)
-                            continue
-                        if soup.find("img", "fit-horizontal").get('src') != None:
-                            _direct_link = soup.find("img", "fit-horizontal").get('src')
-                            with requests.get(_direct_link, stream=True, timeout=5, headers=self.headers) as r:
-                                r.raise_for_status()
-                                _name = re.findall(r".+/([0-9].+.[a-z].+)", _direct_link)[0]
-                                with open(os.path.join(_mdir, _name), "wb") as f:
-                                    for chunk in r.iter_content():
-                                        if chunk:
-                                            f.write(chunk)  
-                        break
-              
-                    except requests.exceptions.HTTPError:
-                        print('HTTP Error. Retrying...')
-                        time.sleep(2)
-                        continue
-                    
-                    except requests.exceptions.Timeout as TimeOutError:
-                        print('Taking too long...trying again')
-                        time.sleep(2)
-                        continue
-                    
-                    except (requests.exceptions.ConnectionError, urllib3.exceptions.ConnectionError) as e:
-                        print("connection aborted. waiting for {0} second(s) and trying again.".format(2))
-                        time.sleep(2)
-                        continue
-                _count += 1
-                self.logger.info("Downloaded {0} out of {1}".format((idx + 1), len(gallery_list)))
-                time.sleep(2)
-        finally:
-            self.logger.info("Gallery downloaded. {0} out of {1} image(s) were saved.".format(_count, len(gallery_list)))
-            self.logger.info("============================================================")
-            time.sleep(2)
-
-
