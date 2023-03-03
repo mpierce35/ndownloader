@@ -1,5 +1,8 @@
 ﻿/ndownloader/automated/
 /ndownloader/automated/*
-/ndownloader/__pycache/
-/ndownloader/__pycache/*
+/ndownloader/__pycache__/
+/ndownloader/__pycache__/*
+/venv
+
+
 

@@ -1,20 +1,21 @@
 ﻿from bs4 import BeautifulSoup
-import utils
 import concurrent.futures
 import requests
 import urllib3
-import http
 import re
 import os
 import time
 import ctypes
 from fake_useragent import UserAgent
-import urllib.parse
 import shutil
-import unicodedata
+import logging
+
+from decorators import check_valid_url
 
 class BaseExtractor(object):
     def __init__(self, dirname=None):
+        self.loggerConfig = logging.basicConfig(level=logging.DEBUG, format="%(levelname)s:%(asctime)s - %(filename)s/%(funcName)s --> %(message)s")
+        self.logger = logging.getLogger(__name__)
         self.BASE_DIR = dirname if dirname is not None else self._create_init_directory()
         self.GALLERY_DIR_NAME = ""
         self.headers = {
@@ -33,24 +34,37 @@ class BaseExtractor(object):
             "direct_link" : "https://t.dogehls.xyz/galleries/",
         }
 
+    @property
+    def GALLERY_DIR_NAME(self):
+        return self._GALLERY_DIR_NAME
+        
+        
+    @GALLERY_DIR_NAME.setter
+    def GALLERY_DIR_NAME(self, value):
+        self._GALLERY_DIR_NAME = value
 
-    def _create_init_directory(self):
+    #create parent directory if not found
+    def _create_init_directory(self) -> str:
         default_dir = os.path.join(os.path.dirname(__file__), 'automated')
         if os.path.exists(default_dir) == False:
             os.mkdir(default_dir)
-            print('Default directory created.')
+            self.logger.info("Default directory created.")
         else:
-            print('Default directory exists.')
+            self.logger.info("Default directory exists.")
         return default_dir
         
     
-    def _create_gallery_directory(self, dirname=None):
-        newdir = os.path.join(self.BASE_DIR, dirname[:260])
+    #create directory for the specied gallery    
+    def _create_gallery_directory(self, dirname=None) -> str:
+        # to avoid moving/copying directories by user, I'm limiting folder's name to 255 characters
+        newdir = os.path.join(self.BASE_DIR, dirname[:255])
         if os.path.exists(newdir) == False:
             os.mkdir(newdir)
+            self.logger.info("Gallery directory was created.")
         return newdir
     
     
+    #comeback later.
     def _create_temp_directory(self):
         path = os.path.join(self.BASE_DIR, "_temp")
         if os.path.exists(path) == False:
@@ -62,22 +76,23 @@ class BaseExtractor(object):
         return path
     
     
+    #converts directory to a zip file
     def _convert_directory_to_zip(self, path):
         try:
-            directory_name = os.path.basename(path)[:260]
+            directory_name = os.path.basename(path)[:255]
             clean_path = os.path.join(self.BASE_DIR, directory_name)
             os.remove(os.path.join(clean_path, "Thumbs.db"))
             shutil.make_archive(clean_path, "zip", os.path.join(self.BASE_DIR, self.GALLERY_DIR_NAME))
         finally:
-            shutil.rmtree(x)
+            shutil.rmtree(clean_path)
+
 
 
     ###########################################
     # Scrape images from one gallery
     ###########################################   
-    def _scrape_images_from_page(self, url=None, zip_=None):
-        if url is None:
-            raise ValueError("'url' parameter is required.")
+    @check_valid_url
+    def _scrape_images_from_page(self, url:str, zip_dir:bool=False) -> None:
         _image_links = list()
         invalid_chars = f'<>:"\/|?*.@'
         pattern = r'[' + invalid_chars + ']'
@@ -86,9 +101,11 @@ class BaseExtractor(object):
         _id = re.findall(r"/([0-9].+)", html.url)[0]            
         title = soup.find("h1").text
         containers = soup.find_all("div", "thumb-container")
-        print("Title: {0}".format(title))                       
-        print("ID: {0}".format(_id))
-        print("Number of images: {0}".format(len(containers)))
+
+        self.logger.info("Title: {0}".format(title))
+        self.logger.info("ID: {0}".format(_id))
+        self.logger.info("Number of images: {0}".format(len(containers)))
+
         x = re.sub(pattern, ' ', title)
         self.GALLERY_DIR_NAME = f"{_id}-{x}"[:260]
         self._create_gallery_directory(dirname=self.GALLERY_DIR_NAME)
@@ -101,16 +118,19 @@ class BaseExtractor(object):
         with concurrent.futures.ThreadPoolExecutor() as executor:
             executor.map(self.get_file, _image_links)
             
-        if zip_ == True:
+        if zip_dir == True:
             self._convert_directory_to_zip(path=self.GALLERY_DIR_NAME)
             
             
     ####################################
     # Scrape galleries from page
     ####################################
-    def scrape_galleries_from_page(self, url=None, pages=None, per_page=None):
+    @check_valid_url
+    def scrape_galleries_from_page(self, url:str=None, pages:int=None, per_page:int=None) -> list:
+        
         if pages is not None and int(pages) > 100:
             raise ValueError("'pages' parameter must not exceed 100.") 
+        
         while True:
             try:
                 try:
@@ -129,10 +149,11 @@ class BaseExtractor(object):
                         html = requests.get(augmented_url).content
                         soup = BeautifulSoup(html, 'lxml')
                         galleries = soup.find_all('div', 'gallery')
-                        print("scraping page: {0}".format(page))
-                        print("Augmented link: {0}".format(augmented_url))
-                        print("Number of galleries in page: {0}".format(len(galleries)))
-                        
+
+                        self.logger.info("scraping page: {0}".format(page))
+                        self.logger.info("Augmented link: {0}".format(augmented_url))
+                        self.logger.info("Number of galleries in page: {0}".format(len(galleries)))
+                                                
                         for gallery in galleries[:per_page] if per_page is not None else galleries:
                             gallery_link = gallery.find("a", "cover").get("href")
                             link = self.links['base'] + gallery_link
@@ -147,19 +168,25 @@ class BaseExtractor(object):
             return gallery__links
 
 
-    def get_file(self, link):
+    #downloads a single link and save file
+    # change it to show donwload progress
+    def get_file(self, link, num_retries:int=20):
+        i = 0
         while True:
-            print("Downloading...\n")
+            self.logger.info("Downloading file...\n")
             try:   
+                if i >= num_retries : return self.logger.error("Error while downloading file.")
                 html = requests.get(link).content
                 soup = BeautifulSoup(html, "lxml")
                 if soup.find('title').text == "nhentai.to | 504: Gateway time-out":
                     print("Gateway Timeout Error...Retrying.")
                     time.sleep(2)
+                    i += 1
                     continue
                 if soup.find('title').text == "nhentai.to | 520: Web server is returning an unknown error":
                     print("520: Server just hit a wall...Retrying in 2 second(s)")
                     time.sleep(2)
+                    i += 1
                     continue
                 if soup.find("img", "fit-horizontal").get('src') != None:
                     _direct_link = soup.find("img", "fit-horizontal").get('src')
@@ -173,22 +200,17 @@ class BaseExtractor(object):
                                     f.write(chunk)                 
                 break
                         
-            except requests.exceptions.HTTPError:
-                print('HTTP Error. Retrying...')
-                time.sleep(2)
-                continue
-            
-            except requests.exceptions.Timeout as TimeOutError:
+            except requests.exceptions.Timeout:
                 print('Taking too long...trying again')
                 time.sleep(2)
                 continue
-            
-            except (requests.exceptions.ConnectionError, urllib3.exceptions.ConnectionError) as e:
+            except (requests.exceptions.ConnectionError, urllib3.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
                 print("connection aborted. waiting for {0} second(s) and trying again.".format(2))
                 time.sleep(2)
                 continue
         
-        
+    
+    
     def _get_gallery(self,gallery_list=None, _title=None):
         _mdir = self._create_gallery_directory(dirname=_title)
         _direct_link = ""
@@ -234,12 +256,11 @@ class BaseExtractor(object):
                         time.sleep(2)
                         continue
                 _count += 1
-                print("Downloaded {0} out of {1}".format((idx + 1), len(gallery_list)))
+                self.logger.info("Downloaded {0} out of {1}".format((idx + 1), len(gallery_list)))
                 time.sleep(2)
         finally:
-            print("Gallery downloaded. {0} out of {1} image(s) were saved.".format(_count, len(gallery_list)))
-            print("==========================================================\n")
+            self.logger.info("Gallery downloaded. {0} out of {1} image(s) were saved.".format(_count, len(gallery_list)))
+            self.logger.info("============================================================")
             time.sleep(2)
-
 
 
