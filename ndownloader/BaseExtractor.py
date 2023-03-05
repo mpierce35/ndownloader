@@ -93,6 +93,7 @@ class BaseExtractor(object):
     ###########################################
     # Scrape images from one gallery
     ###########################################   
+    @check_valid_url
     def _scrape_images_from_page(self, url:str, zip_dir:bool=False) -> None:
         _image_links = list()
         invalid_chars = f'<>:"\/|?*.@'
@@ -134,6 +135,7 @@ class BaseExtractor(object):
     ####################################
     # Scrape galleries from page
     ####################################
+    @check_valid_url
     def scrape_galleries_from_page(self, url:str=None, pages:int=None, per_page:int=None) -> list:
         
         # if pages is not None and int(pages) > 100:

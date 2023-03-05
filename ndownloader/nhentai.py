@@ -55,6 +55,6 @@ class Nhentai(BaseExtractor):
 
 x = Nhentai()
 t = "396784"
-# x.get_doujin_by_id(id_=t, zip_=False)
+x.get_doujin_by_id(id_=t, zip_=False)
 # x.get_doujins_by_category(character="meguru-hachimiya", pages=1)
 
